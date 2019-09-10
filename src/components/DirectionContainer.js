@@ -5,9 +5,10 @@ import Col from 'react-bootstrap/lib/Col';
 import Panel from 'react-bootstrap/lib/Panel';
 import Well from 'react-bootstrap/lib/Well';
 
+
 class DirectionContainer extends React.Component{
-    timeLayout = (timeVal) => {
-        return(<Well>{timeVal}</Well>);
+    timeLayout = (prediction) => {
+        return(<Well>{prediction.minutes}</Well>);
     };
 
     timeClickCallback = () => {
@@ -15,17 +16,14 @@ class DirectionContainer extends React.Component{
     };
 
     render(){
-        return(<Panel>
-            <Col md={2}>
-                {this.props.directionObject.direction}
-            </Col>
-            <Col md={10}>
-                <ListView items={this.props.directionObject.predictions}
+        return(<Col md={6}>
+            <Panel header={this.props.directionObject.title}>
+                <ListView items={this.props.directionObject.prediction}
                           itemLayout={this.timeLayout}
                           itemSelectCallback={this.timeClickCallback}
                 />
-            </Col>
-        </Panel>)
+            </Panel>
+            </Col>)
     }
 
 }
