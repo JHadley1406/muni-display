@@ -7,73 +7,35 @@ import ListView from "../common_components/ListView";
 class MainContainer extends React.Component {
     constructor() {
         super();
-        this.state = {interval: 0, muniList: [], messages: ['no messages yet']};
+        this.state = {interval: 0, muniList: [], messages: [{'id': '555', 'messages':'no messages yet'}]};
     }
 
-    parseResponse = (response) => {
+    parsePredictions = (response) => {
         let parser = new DOMParser();
         let xmlDoc = parser.parseFromString(response.data, "text/xml");
-        let jsonPredictions = this.xmlToJson(xmlDoc);
-        let muniObject = {};
-        let routeObject = {};
-        let directionObject = {};
-        let predictionCount = 0;
-        muniObject['routes'] = [];
-        jsonPredictions.body.predictions.map(function(direction){
-            if(!routeObject.hasOwnProperty('route')) {
-                routeObject['route'] = direction['@attributes'].routeTitle;
-                routeObject['id'] = direction['@attributes'].stopTag;
-            } else if (routeObject.route !== direction['@attributes'].routeTitle){
-                routeObject = {};
-                routeObject['route'] = direction['@attributes'].routeTitle;
-                routeObject['id'] = direction['@attributes'].stopTag;
-            }
-            if(!routeObject.hasOwnProperty('directions')) {
-                routeObject.directions = [];
-            }
-            if(!directionObject.hasOwnProperty('direction')){
-                directionObject['direction'] = direction.direction['@attributes'].title;
-            } else if (directionObject.direction !== direction.direction['@attributes'].title){
-                directionObject = {};
-                directionObject['direction'] = direction.direction['@attributes'].title;
-            }
-            directionObject['predictions'] = [];
-
-
-            direction.direction.prediction.map(function(prediction){
-                if(predictionCount < 4) {
-                    directionObject.predictions.push(prediction['@attributes'].minutes);
-                    predictionCount = predictionCount + 1;
-                } else {
-                    predictionCount = 0;
-                }
-
-                return null;
-            });
-
-            if(!routeObject.directions.includes(directionObject)) {
-                routeObject.directions.push(directionObject);
-            }
-            if(!muniObject.routes.includes(routeObject)){
-                muniObject.routes.push(routeObject);
-            }
-
-
-            return null;
-        });
-        console.log(JSON.stringify(muniObject));
-        this.setState({muniList: muniObject.routes});
+        this.setState({muniList: this.xmlToJson(xmlDoc).predictions});
 
     };
 
-    componentDidMount(){
-        this.timer = setInterval(()=> this.tick(), 60000);
+    parseMessages = (response) => {
+        let parser = new DOMParser();
+        let xmlDoc = parser.parseFromString(response.data, "text/xml");
+        let xmlMessages = xmlDoc.getElementsByTagName('text');
+        let messages = [];
+        for(let i = 0; i < xmlMessages.length; i++){
+            messages.push({'id': i.toString(), 'text': xmlMessages[i].innerHTML});
+        }
+        this.setState({messages: messages});
+    };
+
+    componentWillMount(){
+        this.timer = setInterval(()=> this.tick(), 30000);
         //call messages endpoint
         this.callNextBus();
     }
 
     componentWillUpdate(prevProps, prevState){
-        if(this.state.interval !== prevState){
+        if(this.state.interval !== prevState.interval){
             this.callNextBus();
         }
     }
@@ -83,12 +45,14 @@ class MainContainer extends React.Component {
     }
 
     callNextBus = () => {
-        axios.get('http://webservices.nextbus.com/service/publicXMLFeed?command=predictionsForMultiStops&a=sf-muni&stops=N|5215&stops=N|5216&stops=18|3574&stops=18|3575').then(this.parseResponse);
+        axios.get('http://webservices.nextbus.com/service/publicXMLFeed?command=predictionsForMultiStops&a=sf-muni&stops=N|5215&stops=N|5216&stops=18|3574&stops=18|3575&stops=NX|5216&stops=NX|5215').then(this.parsePredictions);
+        axios.get('http://webservices.nextbus.com/service/publicXMLFeed?command=messages&a=sf-muni&r=18&r=N&r=NX').then(this.parseMessages);
     };
 
     tick() {
         let ping = this.state.interval;
-        this.setState({interval: ping+1});
+        ping++;
+        this.setState({interval: ping});
     }
 
     muniLayout = (muniLine) => {
@@ -101,40 +65,51 @@ class MainContainer extends React.Component {
 
     // Changes XML to JSON
     xmlToJson = (xml) => {
+        let obj = {};
+        obj.predictions = [];
+        let xmlPredictionList = xml.getElementsByTagName('predictions');
+        for(let i = 0; i < xmlPredictionList.length; i++){
+            let routeObject = {'id': i.toString(), 'routeTitle': xmlPredictionList[i].attributes.routeTitle.value};
+            routeObject.direction = [];
+            let directionObject = {};
+            let direction = xmlPredictionList[i].getElementsByTagName('direction');
+            let directionPredictions = [];
 
-    	// Create the return object
-    	let obj = {};
+            if(xmlPredictionList[i].hasAttribute('dirTitleBecauseNoPredictions')){
+                directionObject = {'id': '555'+xmlPredictionList[i].attributes.stopTag.value, 'title': xmlPredictionList[i].attributes.dirTitleBecauseNoPredictions.value, 'prediction': []};
+                directionObject.prediction.push({'id': '555', 'minutes': 'NA'});
+                routeObject.direction.push(directionObject);
+            }
 
-    	if (xml.nodeType === 1) { // element
-    		// do attributes
-    		if (xml.attributes.length > 0) {
-    		obj["@attributes"] = {};
-    			for (let j = 0; j < xml.attributes.length; j++) {
-    				let attribute = xml.attributes.item(j);
-    				obj["@attributes"][attribute.nodeName] = attribute.nodeValue;
-    			}
-    		}
-    	} else if (xml.nodeType === 3) { // text
-    		obj = xml.nodeValue;
-    	}
 
-    	// do children
-    	if (xml.hasChildNodes()) {
-    		for(let i = 0; i < xml.childNodes.length; i++) {
-    			let item = xml.childNodes.item(i);
-    			let nodeName = item.nodeName;
-    			if (typeof(obj[nodeName]) === "undefined") {
-    				obj[nodeName] = this.xmlToJson(item);
-    			} else {
-    				if (typeof(obj[nodeName].push) === "undefined") {
-    					let old = obj[nodeName];
-    					obj[nodeName] = [];
-    					obj[nodeName].push(old);
-    				}
-    				obj[nodeName].push(this.xmlToJson(item));
-    			}
-    		}
-    	}
+            if(xmlPredictionList[i].getElementsByTagName('direction').length !== 0){
+                directionPredictions = direction[0].getElementsByTagName('prediction');
+            }
+
+            for(let dirCount = 0; dirCount < direction.length; dirCount++){
+                directionObject = {'id': dirCount.toString()+xmlPredictionList[i].attributes.stopTag.value, 'title': direction[dirCount].attributes.title.value, 'prediction': []};
+                for (let predictionCount = 0; predictionCount < directionPredictions.length; predictionCount++) {
+                    if (predictionCount < 4) {
+                        let minute = {'id':directionPredictions[predictionCount].attributes.epochTime.value,
+                            'minutes': directionPredictions[predictionCount].attributes.minutes.value};
+                        directionObject.prediction.push(minute);
+                    }
+                }
+                routeObject.direction.push(directionObject);
+            }
+            if(!obj.predictions.some(function(line){
+                return line.routeTitle === routeObject.routeTitle;
+                })) {
+                obj.predictions.push(routeObject);
+            } else{
+                for(let line = 0; line < obj.predictions.length; line ++){
+                    if(obj.predictions[line].routeTitle === routeObject.routeTitle){
+                        obj.predictions[line].direction.push(routeObject.direction[0]);
+                    }
+                }
+            }
+
+        }
 	    return obj;
     };
 
